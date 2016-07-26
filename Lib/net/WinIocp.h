@@ -100,7 +100,7 @@ protected:
 
     CompleteKeySocket* _prepareCkSocket(int iAF, ECKType eType);
 
-    CompleteKeyListen* _reqListen(
+    CompleteKeyListen* _reqListen(int iAF,
         const addrinfo * pkAddrInfo,
         size_t szAcceptNum,
         const FunOnAccept& rFunAccept,

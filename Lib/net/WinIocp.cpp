@@ -156,37 +156,39 @@ CompleteKeySocket * WinIOCP::newCompleteKeySocket(int iAF, ECKType eType)
         }
     }
 
-    if (pkCK == NULL)
-    {
-        pkCK = _prepareCkSocket(iAF, eType);
-    }
-    else
-    {
-        pkCK->kCKBase.eType = eType;
-    }
+	do 
+	{
+		if (pkCK == NULL)
+		{
+			pkCK = _prepareCkSocket(iAF, eType);
+			if (pkCK == NULL)
+			{
+				break;
+			}
+		}
 
-    if (pkCK->kCKBase.eType == E_CK_ACCEPT && pkCK->iAF == AF_INET)
-    {
-        CLocalLock<CCriSec400> kLocker(_ccsCKSocketV4Accept);
-        _setCKUsedV4Accept.insert(pkCK);
-    }
-    else if (pkCK->kCKBase.eType == E_CK_ACCEPT)
-    {
-        CLocalLock<CCriSec400> kLocker(_ccsCKSocketV6Accept);
-        _setCKUsedV6Accept.insert(pkCK);
-    }
-    else if (pkCK->kCKBase.eType == E_CK_CONNECT && pkCK->iAF == AF_INET)
-    {
-        CLocalLock<CCriSec400> kLocker(_ccsCKSocketV4Connect);
-        _setCKUsedV4Connect.insert(pkCK);
-    }
-    else
-    {
-        CLocalLock<CCriSec400> kLocker(_ccsCKSocketV6Connect);
-        _setCKUsedV6Connect.insert(pkCK);
-    }
-
-    
+		if (pkCK->kCKBase.eType == E_CK_ACCEPT && pkCK->iAF == AF_INET)
+		{
+			CLocalLock<CCriSec400> kLocker(_ccsCKSocketV4Accept);
+			_setCKUsedV4Accept.insert(pkCK);
+		}
+		else if (pkCK->kCKBase.eType == E_CK_ACCEPT)
+		{
+			CLocalLock<CCriSec400> kLocker(_ccsCKSocketV6Accept);
+			_setCKUsedV6Accept.insert(pkCK);
+		}
+		else if (pkCK->kCKBase.eType == E_CK_CONNECT && pkCK->iAF == AF_INET)
+		{
+			CLocalLock<CCriSec400> kLocker(_ccsCKSocketV4Connect);
+			_setCKUsedV4Connect.insert(pkCK);
+		}
+		else
+		{
+			CLocalLock<CCriSec400> kLocker(_ccsCKSocketV6Connect);
+			_setCKUsedV6Connect.insert(pkCK);
+		}
+	} while (0);
+        
     return pkCK;
 }
 
@@ -297,13 +299,13 @@ CompleteKeySocket* WinIOCP::_prepareCkSocket(int iAF, ECKType eType)
 				closesocket(pvSocket);
 				break;
 			}
-            iError = bindCKSocket(iAF, pvSocket);
-            if (iError != ERROR_SUCCESS)
-            {
-                LOG_WARN << "warning: prepareCkSocket bindCKSocket " << iError;
-                closesocket(pvSocket);
-                break;
-            }
+			iError = bindCKSocket(iAF, pvSocket);
+			if (iError != ERROR_SUCCESS)
+			{
+				LOG_WARN << "warning: prepareCkSocket bindCKSocket " << iError;
+				closesocket(pvSocket);
+				break;
+			}
 		}
                 
         pkCK = new CompleteKeySocket(iAF);
@@ -474,7 +476,8 @@ WinIOCP::VectorCKListen WinIOCP::reqListen(
         }
         for (ptr = result; ptr != NULL; ptr = ptr->ai_next) 
         {
-            pkCK = _reqListen(ptr,
+            pkCK = _reqListen(iAF,
+				ptr,
                 szAcceptNum, 
                 rFunAccept, 
                 rFunError);
@@ -497,7 +500,7 @@ WinIOCP::VectorCKListen WinIOCP::reqListen(
     return vectorCKListen;
 }
 
-CompleteKeyListen * WinIOCP::_reqListen(
+CompleteKeyListen * WinIOCP::_reqListen(int iAF,
     const addrinfo * pkAddrInfo,
     size_t szAcceptNum,
     const FunOnAccept & rFunAccept,
@@ -505,6 +508,7 @@ CompleteKeyListen * WinIOCP::_reqListen(
 {
     CompleteKeyListen * pkCK = NULL;
     int iError = ERROR_SUCCESS;
+
     do
     {
         /*create socket*/
@@ -522,13 +526,16 @@ CompleteKeyListen * WinIOCP::_reqListen(
             break;
         }
 
-		iError = setOnlyIPV6(pvListenSocket);
-		if (iError != ERROR_SUCCESS)
+		if (pkAddrInfo->ai_family == AF_INET6 && iAF == AF_INET6)
 		{
-			closesocket(pvListenSocket);
-			break;
+			iError = setOnlyIPV6(pvListenSocket, TRUE);
+			if (iError != ERROR_SUCCESS)
+			{
+				closesocket(pvListenSocket);
+				break;
+			}
 		}
-		
+				
         iError = bindAndListen(pvListenSocket, 
             pkAddrInfo->ai_addr, 
             (socklen_t)pkAddrInfo->ai_addrlen);
@@ -548,6 +555,13 @@ CompleteKeyListen * WinIOCP::_reqListen(
             NULL);
 
         reqAccept(pkCK, szAcceptNum);
+
+		char pcIP[NET_IP_STR_LEN] = { 0 };
+		unsigned short usPort = 0;
+		convertAddrs(pcIP,
+			&usPort, (sockaddr_storage*)pkAddrInfo->ai_addr);
+		LOG_ERROR << "Listen ip[" << pcIP << "], port[" << usPort << "]";
+
     } while (0);
 
     return	pkCK;
@@ -616,19 +630,21 @@ CompleteKeySocket * WinIOCP::_reqConnect(
     CompleteKeySocket* pkCK = NULL;
     do
     {
-        addrinfo kAddrInfo;
-        ZeroMemory(&kAddrInfo, sizeof(kAddrInfo));
+		sockaddr_storage kSockaddrStorage;
+		socklen_t addrLen;
+		ZeroMemory(&kSockaddrStorage, sizeof(kSockaddrStorage));
         iError = prepareConnectAddr(iAF,
             pcIP, 
             pcPort, 
-            &kAddrInfo);
+			(SOCKADDR*)&kSockaddrStorage,
+			addrLen);
         if (iError != ERROR_SUCCESS)
         {
             LOG_WARN << "warning: _reqConnect prepareConnectAddr " << iError;
             break;
         }
 
-        pkCK = newCompleteKeySocket(kAddrInfo.ai_family, E_CK_CONNECT);
+        pkCK = newCompleteKeySocket(kSockaddrStorage.ss_family, E_CK_CONNECT);
         if (pkCK == NULL)
         {
             LOG_WARN << "warning: _reqConnect newCompleteKeySocket = NULL";
@@ -644,8 +660,8 @@ CompleteKeySocket * WinIOCP::_reqConnect(
         iError = postConnect(_pfnConnectEx,
             pkCK,
             pkOL,
-            kAddrInfo.ai_addr,
-            (socklen_t)kAddrInfo.ai_addrlen);
+			(SOCKADDR*)&kSockaddrStorage,
+			addrLen);
         if (iError != ERROR_SUCCESS && iError != WSA_IO_PENDING)
         {
             LOG_WARN << "warning: _reqConnect postConnect " << iError;

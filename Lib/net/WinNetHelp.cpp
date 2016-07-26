@@ -338,10 +338,9 @@ int setReUseAddr(SOCKET pvSocket)
     return iError;
 }
 
-int setOnlyIPV6(SOCKET pvSocket)
+int setOnlyIPV6(SOCKET pvSocket, BOOL BOnlyIPV6)
 {
 	int iError = ERROR_SUCCESS;
-	BOOL BOnlyIPV6 = TRUE;
 	if (setsockopt(pvSocket, 
 		IPPROTO_IPV6, 
 		IPV6_V6ONLY, 
@@ -397,46 +396,46 @@ int bindAndListen(SOCKET pvSocket,
 
 int bindCKSocket(int iAF, SOCKET pvSocket)
 {
-    int iError = ERROR_SUCCESS;
-    if (iAF == AF_INET)
-    {
-        SOCKADDR_IN addr;
-        memset(&addr, 0, sizeof(SOCKADDR_IN));
-        addr.sin_family = AF_INET;
-        addr.sin_addr.S_un.S_addr = INADDR_ANY;
-        addr.sin_port = 0;
-        if (bind(pvSocket, 
-            (SOCKADDR*)&addr, 
-            sizeof(addr)) == SOCKET_ERROR)
-        {
-            iError = WSAGetLastError();
-        }
-    }
-    else
-    {
-        SOCKADDR_IN6 addr;
-        memset(&addr, 0, sizeof(SOCKADDR_IN6));
-        addr.sin6_family = AF_INET6;
-        memset(&(addr.sin6_addr.u.Byte), 0, 16);
-        addr.sin6_port = 0;
-        if (bind((SOCKET)pvSocket,
-            (SOCKADDR*)&addr, 
-            sizeof(addr)) == SOCKET_ERROR)
-        {
-            iError = WSAGetLastError();
-        }
-    }
+	int iError = ERROR_SUCCESS;
+	if (iAF == AF_INET)
+	{
+		SOCKADDR_IN addr;
+		memset(&addr, 0, sizeof(SOCKADDR_IN));
+		addr.sin_family = AF_INET;
+		addr.sin_addr.S_un.S_addr = INADDR_ANY;
+		addr.sin_port = 0;
+		if (bind(pvSocket,
+			(SOCKADDR*)&addr,
+			sizeof(addr)) == SOCKET_ERROR)
+		{
+			iError = WSAGetLastError();
+		}
+	}
+	else
+	{
+		SOCKADDR_IN6 addr;
+		memset(&addr, 0, sizeof(SOCKADDR_IN6));
+		addr.sin6_family = AF_INET6;
+		memset(&(addr.sin6_addr.u.Byte), 0, 16);
+		addr.sin6_port = 0;
+		if (bind((SOCKET)pvSocket,
+			(SOCKADDR*)&addr,
+			sizeof(addr)) == SOCKET_ERROR)
+		{
+			iError = WSAGetLastError();
+		}
+	}
 
-    return iError;
+	return iError;
 }
 
 int prepareConnectAddr(int iAF,
     const char * pcIP, 
     const char * pcPort, 
-    addrinfo * pkAddrInfo)
+	SOCKADDR *socketAddr,
+	socklen_t &addrLen)
 {
     addrinfo *result = NULL;
-    addrinfo *ptr = NULL;
     addrinfo hints;
     ZeroMemory(&hints, sizeof(hints));
     hints.ai_family = iAF;
@@ -446,7 +445,8 @@ int prepareConnectAddr(int iAF,
     int iError = getaddrinfo(pcIP, pcPort, &hints, &result);
     if (iError == ERROR_SUCCESS)
     {
-        memcpy(pkAddrInfo, result, sizeof(addrinfo));
+		addrLen = (socklen_t)result->ai_addrlen;
+        memcpy(socketAddr, result->ai_addr, addrLen);
         freeaddrinfo(result);
     }
 

@@ -218,7 +218,7 @@ int setSoConnect(SOCKET pvSocket);
 
 int setReUseAddr(SOCKET pvSocket);
 
-int setOnlyIPV6(SOCKET pvSocket);
+int setOnlyIPV6(SOCKET pvSocket, BOOL BOnlyIPV6);
 
 SOCKET createSocket(int & iError, int iAF);
 
@@ -230,7 +230,9 @@ int bindCKSocket(int iAF, SOCKET pvSocket);
 int prepareConnectAddr(int iAF,
     const char * pcIP,
     const char * pcPort, 
-    addrinfo * pkAddrInfo);
+	SOCKADDR *socketAddr, 
+	socklen_t &addrLen);
+
 
 
 
